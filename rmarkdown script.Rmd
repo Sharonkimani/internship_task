@@ -1,0 +1,464 @@
+---
+title: "Sharon Kimani"
+output: pdf_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE, eval=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("tidyverse")
+install.packages("sf")
+install.packages("ggplot2")
+install.packages("corrplot")
+install.packages("ggcorrplot")
+library(tidyverse)
+library(sf)            
+library(ggplot2)
+library(knitr)
+library(ggcorrplot)
+library(corrplot)
+
+```
+
+# Introduction: Exploratory Data Analysis of Child Health Indicators in Kenya
+
+In this notebook, we will be conducting an Exploratory Data Analysis (EDA) of child health indicators in Kenya. The dataset provided contains monthly data for children under 5 years, disaggregated at a county level, spanning from January 2021 to June 2023.
+
+Children's health is of paramount importance as it directly impacts their growth, development, and overall well-being. The data at hand offers valuable insights into various child health indicators, including the total number of children dewormed, cases of acute malnutrition, stunting in different age groups, diarrhea cases, and the number of underweight children across different age categories.
+
+## Objective:
+The main objective of this analysis is to explore the dataset, uncover patterns, trends, and relationships between different child health indicators across counties and over time. Additionally, the project aims to identify potential associations between these indicators to gain a deeper understanding of their interplay and implications for child health in Kenya.
+
+
+## Dataset Overview:
+The dataset contains the following key variables:
+
+* Period: Represents months from January 2021 to June 2023.
+* County: Encompasses all 47 counties in Kenya, allowing us to analyze regional variations.
+* Total Dewormed: Indicates the total number of children dewormed.
+* Acute Malnutrition: Represents the number of children under 5 years with acute malnutrition.
+* Stunting: Includes the number of children stunted in different age groups (0-6 months, 6-23 months, 24-59 months).
+* Diarrhea Cases: Reflects the number of children under 5 years with diarrhea.
+* Underweight: Encompasses the number of children who are underweight in different age categories (0-6 months, 6-23 months, 24-59 months).
+
+## research question
+This project answers the following research questions:
+
+1. How are different child health indicators, such as deworming, acute malnutrition, stunting, diarrhea cases, and underweight cases, interrelated among children under 5 years in Kenya?
+
+2.Is there a potential link between deworming and improvements in child health, specifically in terms of reducing acute malnutrition, diarrhea cases, and underweight cases?
+
+3. Does early stunting have lasting effects on later childhood, and is there a strong positive correlation between stunting in different age groups?
+
+4. Are there significant geographical disparities in child health indicators across the 47 counties in Kenya, and do specific regions require targeted interventions?
+
+
+## reading data
+
+```{r }
+url <- "https://raw.githubusercontent.com/cema-uonbi/internship_task/main/data/cema_internship_task_2023.csv"
+
+# Download the file using url() from the utils package
+file <- url(url)
+data <- read.csv(file)
+head(data)
+```
+
+## Data preparation
+
+
+```{r}
+# Display the structure of the dataset
+str(data)
+
+
+# Summary statistics
+knitr::kable(summary(data))
+
+
+```
+The data has 1410 observations and 11 columns, 9 numerical and 2 categorical. The data also has missing values. These columns are:
+```{R}
+names(data)# the column names in the dataframe
+```
+
+
+```{R, eval=FALSE, include=FALSE}
+is.na(data)
+```
+
+```{R}
+
+# Function to summarize missing values in a data frame
+missing_values_summary <- function(df) {
+  
+  # Total count of missing values in each column
+  total_missing_per_column <- colSums(is.na(df))
+  
+  # Total number of rows in the data frame
+  total_rows <- nrow(df)
+  
+  # Calculate the percentage of missing values per column
+  percentage_missing_per_column <- (total_missing_per_column / total_rows) * 100
+  
+  # Create a data frame with the information
+  missing_info_df <- data.frame(
+    Column = names(percentage_missing_per_column),
+    Total_Missing = total_missing_per_column,
+    Percentage_Missing = percentage_missing_per_column
+  )
+  
+  # Return the result
+  return(knitr::kable(missing_info_df))
+}
+missing_values_summary(data)
+```
+The columns containing missing values are Acute.Malnutrition, stunted.6.23.months, stunted.0..6.months, and stunted.24.59.months. These columns are all numeric.
+
+- The proportion of missing values in the columns is not substantial. For stunted.6.23.months, stunted.0..6.months, and stunted.24.59.months, the missing values account for approximately 0.5% to 1.5% of each column, which is relatively low. Removing these missing values would not significantly impact the dataset.
+
+- However, the Acute.Malnutrition column has a higher percentage of missing values, constituting approximately 25.2% of the column. Removing such a large portion of data could result in significant information loss. Consequently, it is advisable to impute the missing values in the Acute.Malnutrition column as the most appropriate approach to handle them.
+
+- Imputing the missing values with the mean might skew the data so imputing with the median is the better choice.
+
+```{R}
+#  Remove rows with missing values 
+df <- data[complete.cases(data[, c("stunted.6.23.months", "stunted.0..6.months", "stunted.24.59.months")]), ]
+
+# Step 2: Impute missing values in 'Acute.Malnutrition' with the median
+median_Acute.Malnutrition <- median(df$Acute.Malnutrition, na.rm = TRUE)
+df$Acute.Malnutrition[is.na(df$Acute.Malnutrition)] <- median_Acute.Malnutrition
+```
+
+
+```{R}
+
+missing_values_summary(df)
+
+```
+The data doesnt have any missing values.
+```{R}
+# Check for duplicated rows
+duplicated_rows <- duplicated(df)
+
+# Total number of duplicated rows
+total_duplicated_rows <- sum(duplicated_rows)
+
+# Display the total number of duplicated rows
+print(total_duplicated_rows)
+```
+The data doesn't have any duplicates
+
+```{R}
+dim(df)
+```
+The final dataset has 1376 entries and 11 columns.
+
+```{R}
+#checking for outliers
+# Identify numerical columns
+numerical_columns <- df[, sapply(df, is.numeric)]
+
+# Create a larger plotting device
+par(ask = FALSE)
+par(mar = c(5, 4, 1, 2))  # Set the margins to adjust the plot size
+
+# Create box plots for numerical columns
+for (col in names(numerical_columns)) {
+  boxplot(df[[col]], col = "lightblue", main = paste("Box Plot of", col))
+}
+
+```
+
+- The data appears to contain a substantial number of outliers in each column. However, instead of removing these outliers, we choose to retain them since they could offer valuable insights during the analysis.
+
+```{R, include=FALSE, eval=FALSE}
+data$county
+```
+
+
+## Exploratory data analysis
+### Univariate analysis
+```{R}
+# Function to check if a column is numeric
+is_numeric_column <- function(x) is.numeric(df[[x]])
+
+# List of numerical column names
+numeric_cols <- names(df)[sapply(names(df), is_numeric_column)]
+
+# Function to plot histograms for numerical columns
+plot_histograms <- function(column) {
+  ggplot(df, aes_string(x = column)) +
+    geom_histogram(binwidth = 50, color = "white", fill = "lightblue") +
+    labs(title = paste("Histogram of", column), x = column, y = "Frequency")
+}
+
+library(ggplot2)
+
+# Plot histograms for all numerical columns
+for (col in numeric_cols) {
+  print(plot_histograms(col))
+}
+
+# Function to plot bar plots for categorical columns
+plot_barplots <- function(column) {
+  ggplot(df, aes_string(x = column)) +
+    geom_bar(fill = "lightblue") +
+    labs(title = paste("Bar Plot of", column), x = column, y = "Count")
+}
+
+# List of categorical column names
+categorical_cols <- names(df)[!sapply(names(df), is_numeric_column)]
+
+# Plot bar plots for all categorical columns
+for (col in categorical_cols) {
+  print(plot_barplots(col))
+}
+```
+
+- The "Total Dewormed" column displays positive skewness, indicating that the majority of values cluster towards the lower end of the distribution, with only a few higher values. Consequently, most children in the dataset have not undergone deworming, and only a small proportion of children have received deworming treatment.
+
+- The "Number of children <5 years with acute malnutrition (Acute Malnutrition)" column exhibits positive skewness, suggesting that the majority of values are concentrated towards the lower end of the distribution, with only a small number of higher values. This positive skewness implies that most children in the dataset have a relatively low number of acute malnutrition cases, while only a small subset of children has a higher number of such cases.
+
+- The columns "Number of children stunted (0-6 months, 6-23 months, 24-59 months)" show positive skewness, indicating that most values gather towards the lower end of the data range. This suggests that the majority of children in the dataset have a relatively low number of stunted cases in each age group (0-6 months, 6-23 months, and 24-59 months). However, there are only a few children with a higher number of stunted cases in these age groups.
+
+- The column "Number of children <5 years with diarrhea (Diarrhea cases)" displays positive skewness, meaning that the majority of values concentrate towards the lower end of the distribution, with relatively few higher values. In this context, positive skewness suggests that most children in the dataset have a lower number of diarrhea cases, while only a small proportion of children have a higher number of such cases.
+
+- The columns "Number of children who are underweight (0-6 months, 6-23 months, 24-59 months)" also exhibit positive skewness, indicating that the majority of values are concentrated towards the lower end of the distribution, with relatively few higher values. In this context, positive skewness suggests that most children in the dataset have a lower number of underweight cases in each age group (0-6 months, 6-23 months, and 24-59 months), while only a small proportion of children have a higher number of underweight cases in these age groups.
+
+- The bar plots for the columns "Period" (months from January 2021 to June 2023) and "County" (the 47 counties in Kenya) indicate that they appear to be fairly distributed.
+
+* For the "Period" column, this means that the data points are spread across the different months from January 2021 to June 2023 in a relatively even manner. There is no significant concentration of data points in any particular month, suggesting a balanced representation of time periods in the dataset.
+
+* Similarly, for the "County" column, the bar plot shows that the data is distributed fairly evenly across the 47 counties in Kenya. There is no substantial skewness towards any specific county, indicating a relatively balanced representation of data across different regions.
+
+### Bivariate analysis
+```{R}
+create_scatter_plot <- function(data, x_col, y_col, color = "black", x_label, y_label) {
+  library(ggplot2)
+  
+  # Create the scatter plot
+  ggplot(data, aes(x = .data[[x_col]], y = .data[[y_col]])) +
+    geom_point(color = color) +
+    labs(title = paste("Scatter Plot:", x_col, "vs.", y_col),
+         x = x_label,
+         y = y_label)
+}
+```
+
+
+```{R}
+# Remove leading/trailing whitespaces from column names
+colnames(df) <- trimws(colnames(df))
+# Create scatter plot: Total Dewormed vs. Acute Malnutrition
+create_scatter_plot(df, "Total.Dewormed", "Acute.Malnutrition", color = "blue",
+                    x_label = "Total Dewormed", y_label = "Acute Malnutrition")
+
+
+```
+
+- The scatter plot indicates a positive correlation between the total number of children dewormed and the number of children with acute malnutrition, suggesting that deworming may help reduce acute malnutrition. However, it's crucial to recognize that the scatter plot does not prove causation, as other factors could influence acute malnutrition rates. Additional research is necessary to validate these findings and determine the most effective deworming strategies for preventing acute malnutrition.
+
+```{R}
+# Create scatter plot: Total Dewormed vs. diarrhoea.cases
+create_scatter_plot(df, "Total.Dewormed", "diarrhoea.cases", color = "blue",
+                    x_label = "Total Dewormed", y_label = "diarrhoea.cases")
+```
+
+- The scatter plot reveals a weak negative correlation between the total number of children dewormed and the number of diarrhea cases, suggesting that deworming might contribute to reducing diarrhea cases. However, it's important to note that the scatter plot does not establish a causal link between deworming and diarrhea cases. Other factors, such as access to clean water and sanitation, could also influence the occurrence of diarrhea.
+
+- While the scatter plot hints at the potential benefits of deworming in preventing diarrhea cases, further research is necessary to validate these findings and determine the most effective deworming strategies for this purpose.
+
+
+```{R}
+# Create scatter plot: stunted.0..6.months vs. stunted.6.23.months
+create_scatter_plot(df, "stunted.6.23.months", "stunted.0..6.months", color = "blue",
+                    x_label = "stunted 6-23 months", y_label = "stunted 0-6 months,")
+```
+- The scatter plot illustrates a strong positive relationship between the number of children with stunted growth between 0-6 months and those with stunted growth betweent 6-23 months. This suggests that early stunting may have lasting effects and continue into later stages of childhood. While the plot does not establish causation, it highlights the significance of early intervention programs to address stunting in children under 6 months, potentially influencing stunting outcomes in later childhood. 
+- The correlation results in data points tightly clustered together, supporting the observed relationship. Nonetheless, broader conclusions should consider data representativeness and currency. Overall, the scatter plot underscores the importance of targeted measures to reduce stunting's impact throughout early childhood.
+
+```{R}
+# Create scatter plot: stunted.0..6.months vs. stunted.24.59.months
+create_scatter_plot(df, "stunted.24.59.months", "stunted.0..6.months", color = "blue",
+                    x_label = "stunted 24-59 months", y_label = "stunted 0-6 months,")
+```
+
+- The scatter plot demonstrates a positive correlation between children with stunted growth between 0-6 months and those with stunted growth between 24-59 months, suggesting a link between early stunting and persistent stunted growth. While not implying causation, the findings highlight the importance of early intervention programs to address stunted growth, potentially mitigating its long-term effects. Further research is needed to understand the underlying mechanisms and assess the effectiveness of targeted interventions for at-risk children.
+
+```{R}
+# Create scatter plot: stunted.0..6.months vs. stunted.24.59.months
+create_scatter_plot(df, "stunted.24.59.months", "stunted.6.23.months", color = "blue",
+                    x_label = "stunted 24-59 months", y_label = "stunted 6-23 months,")
+```
+
+- The scatter plot shows a moderate positive correlation between stunted growth between 24-59 months and stunted growth between 6-23 months. Children who experienced stunting earlier are more likely to continue facing stunted growth later. While the correlation is not as strong as with stunting in the past 6 months and 0-6 months, it remains significant, suggesting a connection between the two variables. 
+- Potential explanations include malnutrition, limited healthcare access, and intergenerational stunting transmission. However, causation is not established, and other factors like poverty and malnutrition may also influence stunting prevalence. Early intervention programs targeting at-risk children are crucial to addressing stunted growth and possibly reducing its occurrence.
+
+
+```{R}
+# Create scatter plot: Underweight.0..6.months vs. Underweight.6.23.months
+create_scatter_plot(df, "Underweight.0..6.months", "Underweight.6.23.months", color = "blue",
+                    x_label = "underweight  0-6 months", y_label = "underweight  6-23 months,")
+```
+
+- The scatter plot indicates a strong positive correlation between underweight in the past 0-6 months and underweight in the past 6-23 months, suggesting that children who experienced underweight earlier are more likely to continue facing underweight in the subsequent period. The plot's clustering and few outliers reinforce the relationship's significance. Possible reasons for this correlation include malnutrition, limited healthcare access, and intergenerational underweight transmission. Although causation is not established, early intervention programs targeting at-risk children may help reduce underweight prevalence.
+
+```{R}
+# Create scatter plot: Underweight.0..6.months vs. Underweight.24.59.Months
+create_scatter_plot(df, "Underweight.0..6.months", "Underweight.24.59.Months", color = "blue",
+                    x_label = "underweight  0-6 months", y_label = "underweight  24-59 months,")
+```
+- The scatter plot shows a strong positive correlation between underweight in the past 0-6 months and underweight in the past 24-59 months, indicating that children who were underweight earlier are likely to continue facing underweight in the later period. The relationship is significant, with minimal outliers.
+
+
+```{R}
+# Create scatter plot: Underweight.6.23.months vs. Total.Dewormed
+create_scatter_plot(df, "Underweight.6.23.months", "Total.Dewormed", color = "blue",
+                    x_label = "underweight  6-23 months", y_label = "Total.Dewormed")
+```
+- The scatter plot displays a positive correlation between underweight between 6-23 months and the number of children who have been dewormed. Although the correlation is not very strong, it suggests that deworming programs may contribute to reducing underweight in children. Potential explanations for the relationship include deworming targeting high-risk areas and the possibility of deworming positively impacting weight gain.
+
+```{R}
+# Simple Bar Plot
+ggplot(df, aes(x = county, fill = factor(diarrhoea.cases))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Bar Plot of Diarrhea cases by County",
+       x = "county", y = "Frequency")
+
+```
+- The bar plot illustrates the distribution of diarrhea cases in different counties. Each bar's color corresponds to the number of diarrhea cases, with red bars representing the highest count and green bars the lowest.
+
+- The plot highlights counties with high and low prevalence of diarrhea cases. Lamu stands out as the county with the highest number of cases, totaling 1,200, followed by Marsabit with 1,000 cases.
+
+- On the other hand, counties like Isiolo and Wajir have notably lower prevalence, with 200 and 300 cases, respectively.
+
+- This visual representation allows easy identification of counties with a higher risk of diarrhea cases, making it valuable for targeting interventions aimed at reducing diarrhea prevalence in these specific areas.
+
+```{R}
+# Simple Bar Plot
+ggplot(df, aes(x = period, fill = factor(diarrhoea.cases))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Bar Plot of Diarrhea cases by period",
+       x = "period", y = "Frequency")
+```
+
+- The plot shows that the number of diarrhea cases has increased over time. The period with the highest number of diarrhea cases is January-June 2023, with 600 cases. The period with the lowest number of diarrhea cases is January-June 2021, with 200 cases.
+
+- The plot can be used to track the prevalence of diarrhea cases over time. This information can be used to identify trends in the prevalence of diarrhea and to target interventions to reduce the prevalence of diarrhea.
+
+```{R}
+# Simple Bar Plot
+ggplot(df, aes(x = period, fill = factor(Total.Dewormed))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Bar Plot of Total.Dewormed cases by period",
+       x = "period", y = "Frequency")
+```
+- The plot shows that the number of children who have been dewormed has increased over time. The period with the highest number of children who have been dewormed is January-June 2023, with 400 children. The period with the lowest number of children who have been dewormed is January-June 2021, with 200 children.
+
+- The plot can be used to track the prevalence of deworming over time. This information can be used to identify trends in the prevalence of deworming and to target interventions to increase the prevalence of deworming.
+
+
+```{R}
+# Simple Bar Plot
+ggplot(df, aes(x = county, fill = factor(Total.Dewormed))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Bar Plot of Total.Dewormed cases by county",
+       x = "county", y = "Frequency")
+```
+- The plot shows that there is a wide variation in the number of children who have been dewormed by county. Lamu has the highest number of children who have been dewormed, with 200 children. Isiolo has the lowest number of children who have been dewormed, with 100 children.
+
+- The plot can be used to identify which counties have a high prevalence of deworming. This information can be used to target interventions to increase the prevalence of deworming in these counties.
+
+```{R}
+# Simple Bar Plot
+ggplot(df, aes(x = county, fill = factor(Acute.Malnutrition))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Bar Plot of Acute.Malnutrition cases by county",
+       x = "county", y = "Frequency")
+```
+
+- The bar plot shows the number of children with acute malnutrition by county. The bars are colored according to the number of children with acute malnutrition, with red bars representing the highest number of children and green bars representing the lowest number of children.
+
+- The plot shows that there is a wide variation in the number of children with acute malnutrition by county. Marsabit has the highest number of children with acute malnutrition, with 100 children. Isiolo has the lowest number of children with acute malnutrition, with 50 children.
+
+-The plot can be used to identify which counties have a high prevalence of acute malnutrition. This information can be used to target interventions to reduce the prevalence of acute malnutrition in these counties.
+
+
+```{R}
+# Simple Bar Plot
+ggplot(df, aes(x = period, fill = factor(Acute.Malnutrition))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Bar Plot of Acute.Malnutrition cases by period",
+       x = "period", y = "Frequency")
+```
+- The period with the highest number of children with acute malnutrition is January-June 2023, with 50 children. The period with the lowest number of children with acute malnutrition is January-June 2021, with 25 children.
+
+- The plot can be used to track the prevalence of acute malnutrition over time. This information can be used to identify trends in the prevalence of acute malnutrition and to target interventions to reduce the prevalence of acute malnutrition.
+
+## multivariate analysis
+```{R}
+
+library(ggcorrplot)
+
+# Calculate the correlation matrix
+cor_matrix <- cor(numerical_columns, use = "complete.obs")
+
+# Create the correlation heatmap using ggcorrplot
+ggcorrplot(cor_matrix, type = "full", lab = TRUE, lab_size = 4) +
+  theme(
+    plot.title = element_text(size = 16),  # Title size
+    axis.title.x = element_text(size = 5),  # X-axis label size
+    axis.title.y = element_text(size = 5),  # Y-axis label size
+    axis.text.x = element_text(size = 5, angle = 45, hjust = 1),  # X-axis tick label size and rotation
+    axis.text.y = element_text(size = 5),  # Y-axis tick label size
+    legend.text = element_text(size = 5),  # Legend text size
+    strip.text = element_text(size = 5),  # Facet strip text size
+    plot.margin = unit(c(-2,-2,-2,-2), "cm")  # Adjust plot margins (top, right, bottom, left)
+  )
+
+```
+
+- The correlation matrix shows that there are strong positive correlations between the following pairs of variables:
+
+* Total number of children dewormed and number of children who are underweight (0-6 months, 6-23 months, 24-59 months)
+* Number of children <5 years with acute malnutrition and number of children who are underweight (0-6 months, 6-23 months, 24-59 months)
+* Number of children stunted (0-6 months) and number of children who are underweight (0-6 months)
+
+-This suggests that these three child health indicators are closely related. In other words, children who are dewormed, have acute malnutrition, or are stunted are more likely to be underweight.
+
+-There are also some weaker positive correlations between the following pairs of variables:
+
+* Total number of children dewormed and number of children stunted (0-6 months, 6-23 months, 24-59 months)
+* Number of children <5 years with acute malnutrition and number of children stunted (0-6 months, 6-23 months, 24-59 months)
+* Number of children <5 years with diarrhea and number of children who are underweight (0-6 months, 6-23 months, 24-59 months)
+
+- This suggests that these three child health indicators are also related, but not as closely as the three variables mentioned above.
+
+- Overall, the correlation matrix shows that there are strong positive correlations between child health indicators such as deworming, acute malnutrition, stunting, and underweight. This suggests that these child health indicators are closely related and that interventions that improve one of these indicators are likely to improve the others as well.
+
+
+
+> conclusions 
+
+1. **Child Health Indicator Distribution**: The data exhibits positive skewness, indicating that most children have relatively low values for indicators like deworming, acute malnutrition, stunting, diarrhea cases, and underweight cases.
+
+2. **Interrelationships between Indicators**: Strong positive correlations exist between deworming, acute malnutrition, stunting, and underweight, suggesting that children who experience one of these indicators are more likely to experience others as well. Weaker positive correlations are also observed between deworming, stunting, acute malnutrition, and diarrhea cases.
+
+3. **Temporal and Spatial Trends**: The dataset demonstrates an even distribution across months and counties in Kenya, providing a comprehensive view of child health indicators over time and regions.
+
+> Recommendations:
+
+1. **Targeted Deworming Programs**: Prioritize targeted deworming programs in areas with high acute malnutrition rates to improve overall child health and reduce acute malnutrition cases.
+
+2. **Early Intervention for Stunting**: Implement early intervention programs to address stunting in children under 6 months, which may have lasting effects on reducing stunted growth in later childhood.
+
+3. **Diarrhea Prevention Strategies**: While further research is needed to validate the potential benefits of deworming in reducing diarrhea cases, implementing comprehensive diarrhea prevention strategies, such as improving access to clean water and sanitation facilities, remains critical.
+
+4. **Integrated Health Interventions**: Consider integrated health interventions that address multiple child health indicators simultaneously to achieve more significant improvements in overall child health.
+
+5. **Data Monitoring and Research**: Continuously monitor child health indicators and conduct further research to establish causal relationships, enabling evidence-based decision-making and intervention refinement.
+
+6. **Address Regional Disparities**: Tailor health programs to the specific needs of each county to address variations in child health indicators and achieve more effective resource allocation.
+
+7. **Collaboration with Local Communities**: Engage local communities and healthcare providers in child health initiatives to ensure cultural sensitivity and a better understanding of unique challenges faced by children in different regions.
